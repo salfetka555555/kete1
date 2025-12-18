@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Kanban Board</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .board-container {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .column {
+            width: 30%;
+            min-height: 300px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            background-color: white;
+            position: relative;
+        }
+        
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+        
+        ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        li.card {
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            cursor: grab;
+            transition: transform 0.1s ease-in-out;
+        }
+        
+        /* Подсветка колонки */
+        .column.highlighted {
+            outline: 2px dashed green;
+        }
+        
+        input[type=text], button {
+            padding: 10px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        
+        form {
+            display: flex;
+            align-items: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    
+<div class="board-container">
+    <div id="todo-column" class="column">
+        <h2>To Do</h2>
+        <ul></ul>
+    </div>
+    <div id="in-progress-column" class="column">
+        <h2>In Progress</h2>
+        <ul></ul>
+    </div>
+    <div id="done-column" class="column">
+        <h2>Done</h2>
+        <ul></ul>
+    </div>
+</div>
+
+<!-- Форма для ввода новых задач -->
+<form onsubmit="addTask(event); return false;">
+    <input type="text" id="task-input" placeholder="Enter task name..." required />
+    <button type="submit">Add Task</button>
+</form>
+
+<script>
+// Функция сохранения данных в localStorage
+const saveState = () => {
+    const state = {
+        todo: Array.from(document.querySelector('#todo-column > ul').children).map(card => card.textContent),
+        inProgress: Array.from(document.querySelector('#in-progress-column > ul').children).map(card => card.textContent),
+        done: Array.from(document.querySelector('#done-column > ul').children).map(card => card.textContent)
+    };
+    localStorage.setItem('kanban-state', JSON.stringify(state));
+};
+
+// Функция загрузки сохраненного состояния
+const loadState = () => {
+    const savedState = localStorage.getItem('kanban-state');
+    if (!savedState) return;
+    const { todo, inProgress, done } = JSON.parse(savedState);
+    ['#todo-column', '#in-progress-column', '#done-column'].forEach((selector, index) => {
+        document.querySelector(`${selector} > ul`).innerHTML = '';
+        const columnData = [todo, inProgress, done][index];
+        columnData.forEach(taskName => addCard(selector, taskName));
+    });
+};
+
+// Создание карточки задачи
+const createCardElement = (taskName) => {
+    const card = document.createElement("li");
+    card.classList.add("card");
+    card.draggable = true;
+    card.textContent = taskName;
+    card.ondragstart = handleDragStart;
+    return card;
+};
+
+// Обработчик перетаскивания элемента
+let draggedItem = null;
+const handleDragStart = (event) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', event.target.id || '');
+    draggedItem = event.target;
+    setTimeout(() => {
+        event.target.style.display = 'none'; // временно скрываем элемент для плавного эффекта перетаскивания
+    }, 0);
+};
+
+// Проверяем над какой колонкой находится перетаскиваемый объект
+document.body.addEventListener('dragover', function(e) {
+    e.preventDefault();
+});
+
+// Подсветка колонки при наведении перетаскиваемого объекта
+document.querySelectorAll('.column').forEach(column => {
+    column.addEventListener('dragenter', highlightColumn);
+    column.addEventListener('dragleave', unhighlightColumn);
+});
+
+// Подсветка колонки
+const highlightColumn = (event) => {
+    event.currentTarget.classList.add('highlighted');
+};
+
+// Убираем подсветку колонки
+const unhighlightColumn = (event) => {
+    event.currentTarget.classList.remove('highlighted');
+};
+
+// Фиксируем карточку в колонке после завершения перетаскивания
+document.querySelectorAll('.column').forEach(column => {
+    column.addEventListener('drop', handleDrop);
+});
+
+// Определяем куда помещается карточка
+const handleDrop = (event) => {
+    event.preventDefault();
+    event.stopPropagation(); // Остановка распространения события вверх по DOM
+    const targetColumn = event.currentTarget;
+    const newPosition = event.clientY - targetColumn.offsetTop;
+    let dropLocationIndex = Math.floor(newPosition / 50); // пример расчета индекса вставки исходя из высоты элементов
+    if(dropLocationIndex >= targetColumn.children.length){
+        dropLocationIndex = targetColumn.children.length;
+    }
+    targetColumn.insertBefore(draggedItem, targetColumn.children[dropLocationIndex]);
+    draggedItem.style.display = ''; // Показываем элемент обратно
+    saveState(); // Сохраняем новое положение карт
+};
+
+// Создаем новую задачу и добавляем её в список ToDo
+const addTask = (event) => {
+    event.preventDefault();
+    const taskInput = document.getElementById('task-input');
+    const taskText = taskInput.value.trim();
+    if (taskText === '') return;
+    addCard('#todo-column', taskText);
+    taskInput.value = '';
+    saveState();
+};
+
+// Добавляем карту в заданную колонку
+const addCard = (targetColumnSelector, taskName) => {
+    const targetUl = document.querySelector(`${targetColumnSelector} > ul`);
+    const card = createCardElement(taskName);
+    targetUl.appendChild(card);
+};
+
+loadState(); // Загружаем сохраненное состояние при запуске страницы
+</script>
+
+</body>
+</html>
